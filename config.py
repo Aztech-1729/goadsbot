@@ -159,7 +159,7 @@ PLAN_IMAGES = {
 # Manual UPI payment (no crypto)
 UPI_PAYMENT = {
     'qr_image_url': os.getenv('UPI_QR_IMAGE_URL', 'https://i.ibb.co/XZSzZbgC/qr.jpg'),
-    'upi_id': os.getenv('UPI_ID', 'example@upi'),
+    'upi_id': os.getenv('UPI_ID', 'whoisnaseem@fam'),
     'payee_name': os.getenv('UPI_PAYEE_NAME', 'GO ADS BOT'),
 }
 
