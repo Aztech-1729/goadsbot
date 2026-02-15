@@ -3,14 +3,14 @@ import os
 BOT_CONFIG = {
     'api_id': int(os.getenv('TELEGRAM_API_ID', '38276360')),
     'api_hash': os.getenv('TELEGRAM_API_HASH', '29b3a8fd85db1590cc6cc12d9864be54'),
-    'bot_token': os.getenv('BOT_TOKEN', '8561523022:AAEivpyrPjP7E-44bqObPKboatsM5YfX3tw'),
+    'bot_token': os.getenv('BOT_TOKEN', '8137849431:AAH3Kl3nRnn_sTne0-nSv9j1r8Xa-c8g7mc'),
     'owner_id': int(os.getenv('OWNER_ID', '5812817910')),
     'mongo_uri': os.getenv('MONGO_URI', 'mongodb+srv://aztech:ayazahmed1122@cluster0.mhuaw3q.mongodb.net/goadsbot_db?retryWrites=true&w=majority'),
     'db_name': os.getenv('MONGO_DB_NAME', 'goadsbot_db'),
-    'logger_bot_token': os.getenv('LOGGER_BOT_TOKEN', '8137849431:AAH3Kl3nRnn_sTne0-nSv9j1r8Xa-c8g7mc'),
+    'logger_bot_token': os.getenv('LOGGER_BOT_TOKEN', '8561523022:AAEivpyrPjP7E-44bqObPKboatsM5YfX3tw'),
     'logger_bot_username': os.getenv('LOGGER_BOT_USERNAME', 'goadslogbot'),
     # Admin Notifications Config
-    'notification_bot_token': os.getenv('NOTIFICATION_BOT_TOKEN', '8137849431:AAH3Kl3nRnn_sTne0-nSv9j1r8Xa-c8g7mc'),
+    'notification_bot_token': os.getenv('NOTIFICATION_BOT_TOKEN', '8561523022:AAEivpyrPjP7E-44bqObPKboatsM5YfX3tw'),
     'notification_channel_id': int(os.getenv('NOTIFICATION_CHANNEL_ID', '-1001234567890')),
 }
 
