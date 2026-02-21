@@ -457,6 +457,8 @@ def get_user(user_id):
             'forwarding_mode': 'auto',  # Default: Auto Groups Only
             'ads_mode': 'saved',
             'smart_rotation': False,
+            'auto_sleep_enabled': False,  # Default OFF for auto sleep
+            'auto_sleep_duration': 1800,  # Default 30 minutes (in seconds)
             'created_at': datetime.now(),
             '_is_new_user': True  # Flag for notification
         }
@@ -1266,6 +1268,48 @@ async def run_forwarding_loop(user_id, account_id):
                     print(f"[{account_id}] Stopped before round delay")
                     break
                 
+                # ===== Auto Sleep: 2AM - 6AM daily =====
+                user = get_user(user_id)
+                auto_sleep_enabled = user.get('auto_sleep_enabled', False)
+
+                if auto_sleep_enabled:
+                    # Use IST (Indian Standard Time = UTC+5:30)
+                    from datetime import timezone, timedelta
+                    IST = timezone(timedelta(hours=5, minutes=30))
+                    now_ist = datetime.now(IST)
+                    current_hour_ist = now_ist.hour
+                    # If current IST time is between 2AM and 6AM, sleep until 6AM IST
+                    if 2 <= current_hour_ist < 6:
+                        # Calculate seconds remaining until 6:00 AM IST
+                        wake_time_ist = now_ist.replace(hour=6, minute=0, second=0, microsecond=0)
+                        sleep_seconds = int((wake_time_ist - now_ist).total_seconds())
+                        print(f"[FORWARDING] Auto Sleep IST: 2AM-6AM window active. Sleeping {sleep_seconds}s until 6AM IST...")
+                        try:
+                            await send_log(account_id,
+                                f"<b>💤 Auto Sleep Activated</b>\n\n"
+                                f"🕑 <b>Window:</b> <code>2:00 AM – 6:00 AM IST</code>\n"
+                                f"⏰ <b>Resuming at:</b> <code>6:00 AM IST</code>\n"
+                                f"<i>Bot will resume forwarding automatically.</i>"
+                            )
+                        except Exception:
+                            pass
+
+                        for _ in range(sleep_seconds):
+                            acc = get_account_by_id(account_id)
+                            if not acc or not acc.get('is_forwarding', False):
+                                print(f"[{account_id}] Stopped during auto sleep window")
+                                break
+                            await asyncio.sleep(1)
+
+                        try:
+                            await send_log(account_id,
+                                f"<b>⏰ Auto Sleep Complete</b>\n\n"
+                                f"<i>It's 6:00 AM IST — resuming forwarding now!</i>"
+                            )
+                        except Exception:
+                            pass
+                
+                # Normal round delay
                 print(f"[FORWARDING] Waiting {round_delay}s for next round...")
                 for _ in range(round_delay):
                     # Check every second if forwarding was stopped
@@ -1703,6 +1747,9 @@ def settings_menu_keyboard(uid):
     leave_status = "✅ ON" if auto_leave_enabled else "❌ OFF"
     buttons.append([Button.inline(f"Auto Leave Failed: {leave_status}", b"toggle_auto_leave")])
     
+    # Auto Sleep - Available for ALL users
+    buttons.append([Button.inline("\U0001F4A4 Auto Sleep", b"menu_auto_sleep")])  # 💤
+    
     buttons.append([Button.inline("\u2190 Back", b"enter_dashboard")])  # ←
     return buttons
 def interval_menu_keyboard(user_id):
@@ -1785,10 +1832,14 @@ async def apply_account_profile_templates(user_id: int):
     """Update all added accounts' profile last name + bio using templates from config.
 
     - First name is kept as-is
-    - Last name forced to MESSAGES['account_last_name_tag']
-    - Bio forced to MESSAGES['account_bio']
+    - For FREE users ONLY: Last name forced to MESSAGES['account_last_name_tag'], Bio forced to MESSAGES['account_bio']
+    - For PREMIUM users: Bio and last name are NOT changed (left as-is)
     """
     try:
+        # Check if user is premium - premium users keep their original profile
+        if is_premium(user_id):
+            return  # Don't modify premium user accounts
+        
         last_name = MESSAGES.get('account_last_name_tag', '')
         about = MESSAGES.get('account_bio', '')
         if not last_name and not about:
@@ -3423,6 +3474,7 @@ async def callback(event):
                     f"└ <b>Logs:</b> {logs}\n\n"
                     f"<b>━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
                 )
+                # Note: Admin profile does not show auto sleep (God Mode)
             else:
                 # Regular User Display
                 # Check if user still has active premium
@@ -3480,6 +3532,21 @@ async def callback(event):
                 # Logs are enabled if logs_chat_id is set
                 logs = "✅ Enabled" if user.get('logs_chat_id') else "❌ Disabled"
                 
+                # Auto Sleep status for profile
+                profile_sleep_enabled = user.get('auto_sleep_enabled', False)
+                profile_sleep_duration = user.get('auto_sleep_duration', 1800)
+                if profile_sleep_duration == 1800:
+                    profile_sleep_dur_text = "30 min"
+                elif profile_sleep_duration == 3600:
+                    profile_sleep_dur_text = "1 hr"
+                elif profile_sleep_duration == 18000:
+                    profile_sleep_dur_text = "5 hrs"
+                elif profile_sleep_duration == 28800:
+                    profile_sleep_dur_text = "8 hrs"
+                else:
+                    profile_sleep_dur_text = f"{profile_sleep_duration // 60} min"
+                auto_sleep_display = "✅ ON (2AM–6AM)" if profile_sleep_enabled else "❌ OFF"
+                
                 # Get username
                 try:
                     username = f"@{event.sender.username}" if event.sender.username else "Not set"
@@ -3505,7 +3572,8 @@ async def callback(event):
                     f"├ <b>Interval:</b> <code>{interval_str}</code>\n"
                     f"├ <b>Auto Reply:</b> {auto_reply}\n"
                     f"├ <b>Smart Rotation:</b> {smart_rotation}\n"
-                    f"└ <b>Logs:</b> {logs}\n\n"
+                    f"├ <b>Logs:</b> {logs}\n"
+                    f"└ <b>💤 Auto Sleep:</b> {auto_sleep_display}\n\n"
                     f"<b>━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
                 )
             
@@ -3783,6 +3851,21 @@ async def callback(event):
             auto_leave_enabled = user_doc.get('auto_leave_groups', True)
             leave_status = "✅ ON" if auto_leave_enabled else "❌ OFF"
             
+            # Auto Sleep status for settings caption
+            auto_sleep_enabled = user_doc.get('auto_sleep_enabled', False)
+            auto_sleep_duration = user_doc.get('auto_sleep_duration', 1800)
+            if auto_sleep_duration == 1800:
+                auto_sleep_duration_text = "30 min"
+            elif auto_sleep_duration == 3600:
+                auto_sleep_duration_text = "1 hr"
+            elif auto_sleep_duration == 18000:
+                auto_sleep_duration_text = "5 hrs"
+            elif auto_sleep_duration == 28800:
+                auto_sleep_duration_text = "8 hrs"
+            else:
+                auto_sleep_duration_text = f"{auto_sleep_duration // 60} min"
+            auto_sleep_status = "✅ ON (2AM–6AM)" if auto_sleep_enabled else "❌ OFF"
+
             text = (
                 "<b>⚙️ Settings</b>\n\n"
                 "<b>━━━━━━━━━━━━━━━━━━━━━━━━━</b>\n\n"
@@ -3792,7 +3875,8 @@ async def callback(event):
                 f"├ <b>⏱️ Interval:</b> <code>{interval_display}</code>\n"
                 f"├ <b>🔄 Smart Rotation:</b> <code>{rotation_status}</code>\n"
                 f"├ <b>📝 Logs:</b> <code>{logs_status}</code>\n"
-                f"└ <b>🚫 Auto Leave Failed:</b> <code>{leave_status}</code>\n\n"
+                f"├ <b>🚫 Auto Leave Failed:</b> <code>{leave_status}</code>\n"
+                f"└ <b>💤 Auto Sleep:</b> <code>{auto_sleep_status}</code>\n\n"
                 "<b>━━━━━━━━━━━━━━━━━━━━━━━━━</b>"
             )
             await event.edit(text, parse_mode='html', buttons=settings_menu_keyboard(uid))
@@ -4081,6 +4165,65 @@ async def callback(event):
             await event.edit(
                 "<b>📝 Logs</b>\n\n"
                 "<blockquote>Once enabled, logs will be sent for <b>all</b> your added accounts.</blockquote>\n\n"
+                f"<b>Status:</b> <code>{status}</code>",
+                parse_mode='html',
+                buttons=buttons
+            )
+            return
+
+        # ===================== Auto Sleep =====================
+        if data == "menu_auto_sleep":
+            user_doc = get_user(uid)
+            enabled = user_doc.get('auto_sleep_enabled', False)
+            status = "✅ ON" if enabled else "❌ OFF"
+            toggle_label = "🔴 Turn OFF" if enabled else "🟢 Turn ON"
+
+            buttons = [
+                [Button.inline(toggle_label, b"autosleep_toggle")],
+                [Button.inline("← Back", b"menu_settings")]
+            ]
+
+            await event.edit(
+                f"<b>💤 Auto Sleep</b>\n\n"
+                f"<blockquote>"
+                f"When enabled, the bot will automatically pause all forwarding activity every night from "
+                f"<b>2:00 AM → 6:00 AM</b> (daily).\n\n"
+                f"During this window, the bot sleeps and resumes automatically at 6:00 AM. "
+                f"This makes your accounts look more human and reduces ban risk."
+                f"</blockquote>\n\n"
+                f"<b>🕑 Sleep Window:</b> <code>2:00 AM – 6:00 AM</code>\n"
+                f"<b>Status:</b> <code>{status}</code>",
+                parse_mode='html',
+                buttons=buttons
+            )
+            return
+
+        # Auto Sleep - Toggle ON/OFF
+        if data == "autosleep_toggle":
+            user_doc = get_user(uid)
+            current = user_doc.get('auto_sleep_enabled', False)
+            new_status = not current
+            users_col.update_one({'user_id': uid}, {'$set': {'auto_sleep_enabled': new_status}})
+
+            user_doc = get_user(uid)
+            enabled = user_doc.get('auto_sleep_enabled', False)
+            status = "✅ ON" if enabled else "❌ OFF"
+            toggle_label = "🔴 Turn OFF" if enabled else "🟢 Turn ON"
+
+            buttons = [
+                [Button.inline(toggle_label, b"autosleep_toggle")],
+                [Button.inline("← Back", b"menu_settings")]
+            ]
+
+            await event.edit(
+                f"<b>💤 Auto Sleep</b>\n\n"
+                f"<blockquote>"
+                f"When enabled, the bot will automatically pause all forwarding activity every night from "
+                f"<b>2:00 AM → 6:00 AM</b> (daily).\n\n"
+                f"During this window, the bot sleeps and resumes automatically at 6:00 AM. "
+                f"This makes your accounts look more human and reduces ban risk."
+                f"</blockquote>\n\n"
+                f"<b>🕑 Sleep Window:</b> <code>2:00 AM – 6:00 AM</code>\n"
                 f"<b>Status:</b> <code>{status}</code>",
                 parse_mode='html',
                 buttons=buttons
